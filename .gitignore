@@ -1,0 +1,28 @@
+# Build and Output Files
+bin/
+obj/
+
+# User-Specific and IDE Files
+.vscode/
+*.suo
+*.user
+*.sln.docstates
+*.vs/
+
+# Environment and Config Files
+appsettings.json
+appsettings.Development.json
+secrets.json
+.env
+
+# Logs and Debug Files
+logs/
+*.log
+
+# Dependencies
+node_modules/
+packages/
+
+# Miscellaneous
+*.bak
+Thumbs.db
