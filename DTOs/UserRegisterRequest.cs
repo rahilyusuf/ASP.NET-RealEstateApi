@@ -2,7 +2,7 @@
 
 namespace RealEstateApi.DTOs
 {
-    public class RegisterRequest
+    public class UserRegisterRequest
     {
         [Required]
         public string Name { get; set; }

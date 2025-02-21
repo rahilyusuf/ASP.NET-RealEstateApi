@@ -7,6 +7,8 @@ using RealEstateApi.Models;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using RealEstateApi.DTOs; 
+
 
 namespace RealEstateApi.Controllers
 {
@@ -25,7 +27,7 @@ namespace RealEstateApi.Controllers
 
 
         [HttpPost("[action]")]
-        public IActionResult Register([FromBody] User user)
+        public IActionResult Register([FromBody] UserRegisterRequest user)
         {
             var userExists = _context.Users.FirstOrDefault(u => u.Email == user.Email);
             if(userExists != null)
@@ -39,7 +41,7 @@ namespace RealEstateApi.Controllers
                 Password = user.Password,
                 Phone = user.Phone
             };
-            _context.Users.Add(user);
+            _context.Users.Add(newUser);
             _context.SaveChanges();
             return StatusCode(StatusCodes.Status201Created);
         }
@@ -71,7 +73,7 @@ namespace RealEstateApi.Controllers
 
             var jwt = new JwtSecurityTokenHandler().WriteToken(token);
             return Ok(jwt);
-
+             
         }
     }
 }

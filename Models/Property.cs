@@ -9,7 +9,7 @@
         public string Address { get; set; }
         public string ImageUrl { get; set; }
         public int Price { get; set; }
-        public int IsTrending{ get; set; }
+        public bool IsTrending{ get; set; }
         public int CategoryId { get; set; }
         public Category Category { get; set; }
         public int UserId { get; set; }
