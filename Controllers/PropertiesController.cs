@@ -37,7 +37,7 @@ namespace RealEstateApi.Controllers
                 return NotFound("User not found");
             }
 
-            // Map DTO to Entity
+      
             var property = new Property
             {
                 Name = propertyDto.Name,
@@ -54,6 +54,41 @@ namespace RealEstateApi.Controllers
             _context.SaveChanges();
 
             return StatusCode(StatusCodes.Status201Created, property);
+        }
+
+        [HttpPut("{id}")]
+        [Authorize]
+        public IActionResult Put(int id,[FromBody] PropertyDto propertyDto)
+        {
+            var propertyResult = _context.Properties.FirstOrDefault(p => p.Id == id);
+            if (propertyResult == null)
+            {
+                return NotFound($"Property with ID {id} not found");
+            }
+
+            // Get the authenticated user's email from JWT token
+            var userEmail = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
+            var user = _context.Users.FirstOrDefault(u => u.Email == userEmail);
+
+            if (user == null || propertyResult.UserId != user.Id)
+            {
+                return Unauthorized("You are not authorized to update this property");
+            }
+
+
+           
+                propertyResult.Name = propertyDto.Name;
+                propertyResult.Detail = propertyDto.Details;
+                propertyResult.Address = propertyDto.Address;
+                propertyResult.Price = (int)propertyDto.Price;
+                propertyResult.ImageUrl = propertyDto.ImageUrl;
+                propertyResult.CategoryId = propertyDto.CategoryId;
+            
+
+         
+            _context.SaveChanges();
+
+            return NoContent();
         }
     }
 }
