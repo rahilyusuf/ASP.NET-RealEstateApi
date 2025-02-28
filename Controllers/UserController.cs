@@ -1,13 +1,13 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
+
 using RealEstateApi.Data;
 using RealEstateApi.Models;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-using RealEstateApi.DTOs; 
+
+using RealEstateApi.DTOs;
+using Microsoft.AspNetCore.Identity;
+using RealEstateApi.Services;
 
 
 namespace RealEstateApi.Controllers
@@ -17,12 +17,34 @@ namespace RealEstateApi.Controllers
     public class UserController : ControllerBase
     {
         private readonly ApiDbContext _context;
-        private readonly IConfiguration _config;
+        private readonly IPasswordHasher<User> _passwordHasher;
+        private readonly IAuthService _authService;
 
-        public UserController(ApiDbContext context, IConfiguration config)
+        public UserController(ApiDbContext context, IConfiguration config, IPasswordHasher<User> passwordHasher, IAuthService authService)
         {
             _context = context;
-            _config = config;
+            _passwordHasher = passwordHasher;
+            _authService = authService;
+        }
+
+        [HttpGet("[action]")]
+        public IActionResult HasExistingPasswords()
+        {
+            var users = _context.Users.ToList();
+
+            foreach (var u in users)
+            {
+                if (!IsHashed(u.Password))
+                {
+                    u.Password = _passwordHasher.HashPassword(u, u.Password);
+                }
+            }
+            _context.SaveChanges();
+            return Ok("Password successfully updated");
+        }
+        private bool IsHashed(string password)
+        {
+            return password.Length == 88 && password[0] == 'A' && password[1] == 'Q';
         }
 
 
@@ -30,7 +52,7 @@ namespace RealEstateApi.Controllers
         public IActionResult Register([FromBody] UserRegisterRequest user)
         {
             var userExists = _context.Users.FirstOrDefault(u => u.Email == user.Email);
-            if(userExists != null)
+            if (userExists != null)
             {
                 return BadRequest("User already exists");
             }
@@ -38,42 +60,38 @@ namespace RealEstateApi.Controllers
             {
                 Name = user.Name,
                 Email = user.Email,
-                Password = user.Password,
+                Password = _passwordHasher.HashPassword(new User(), user.Password),
                 Phone = user.Phone
             };
             _context.Users.Add(newUser);
             _context.SaveChanges();
-            return StatusCode(StatusCodes.Status201Created);
+
+            var userResponse = new UserResponse
+            {
+                Name = newUser.Name,
+                Email = newUser.Email,
+                Phone = newUser.Phone
+            };
+            return Created("User Created", userResponse);
         }
 
         [HttpPost("[action]")]
         public IActionResult Login([FromBody] LoginRequest user)
         {
-            var CurrentUser = _context.Users.FirstOrDefault(u => u.Email == user.Email && u.Password == user.Password);
+            var CurrentUser = _context.Users.FirstOrDefault(u => u.Email == user.Email);
             if (CurrentUser == null)
             {
-                return NotFound("User not found");
+                return Unauthorized("Invalid email or password");
             }
-            var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
-            var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
-            var claims = new[]
+
+            var result = _passwordHasher.VerifyHashedPassword(CurrentUser, CurrentUser.Password, user.Password);
+            if (result == PasswordVerificationResult.Failed)
             {
-                new Claim(ClaimTypes.Email, user.Email)
-                
+                return Unauthorized("Invalid password");
+            }
 
-            };
-
-            var token = new JwtSecurityToken(
-                issuer: _config["JWT:Issuer"],
-                audience: _config["JWT:Audience"],
-                claims: claims,
-                expires: DateTime.Now.AddMinutes(60),
-                signingCredentials: credentials
-                );
-
-            var jwt = new JwtSecurityTokenHandler().WriteToken(token);
-            return Ok(jwt);
-             
+            var jwt = _authService.GenerateJwtToken(CurrentUser.Email);
+            return Ok(new AuthResponseDTO { Token = jwt, Email = CurrentUser.Email });
         }
     }
 }

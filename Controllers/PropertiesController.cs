@@ -45,7 +45,7 @@ namespace RealEstateApi.Controllers
                 return NotFound($"Property with ID {id} not found");
             }
             var propertyDto = _mapper.Map<PropertyDto>(propertyResult);
-            return Ok(propertyResult);
+            return Ok(propertyDto);
         }
 
         [HttpGet("TrendingProperties")]
