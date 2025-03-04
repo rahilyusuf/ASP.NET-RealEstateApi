@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using RealEstateApi.Data;
+using RealEstateApi.DTOs;
+using RealEstateApi.Repositories;
 
 namespace RealEstateApi.Controllers
 {
@@ -9,23 +11,28 @@ namespace RealEstateApi.Controllers
     [ApiController]
     public class CategoriesController : ControllerBase
     {
-        private readonly ApiDbContext _context;
-        public CategoriesController(ApiDbContext context)
+        private readonly ICategoryRepository _categoryRepository;
+        public CategoriesController(ICategoryRepository categoryRepository)
         {
-            _context = context;
+            _categoryRepository = categoryRepository;
         }
         [HttpGet]
         [Authorize]
-        public IActionResult Get()
+        public async Task<IActionResult> Get()
         {
 
-            var categories = _context.Categories.Select(c => new
+            var categories = await _categoryRepository.GetCategoriesAsync();
+            if(categories == null || !categories.Any())
             {
-                c.Id,
-                c.Name,
+                return NotFound();
+            }
+            var CategoryDTOs = categories.Select(c => new CategoryDTO
+            {
+                Id = c.Id,
+                Name = c.Name,
                 ImageUrl = $"{Request.Scheme}://{Request.Host}/uploads/{c.ImageUrl}"
             }).ToList();
-            return Ok(categories);
+            return Ok(CategoryDTOs);
         }
     }
 }

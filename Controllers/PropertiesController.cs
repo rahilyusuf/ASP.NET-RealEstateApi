@@ -6,6 +6,8 @@ using System.Security.Claims;
 using RealEstateApi.Models;
 using RealEstateApi.DTOs;
 using AutoMapper;
+using RealEstateApi.Repositories;
+using System.Threading.Tasks;
 
 namespace RealEstateApi.Controllers
 {
@@ -13,21 +15,23 @@ namespace RealEstateApi.Controllers
     [ApiController]
     public class PropertiesController : ControllerBase
     {
-        private readonly ApiDbContext _context;
+        private readonly IPropertyRepository _propertyRepository;
+        private readonly IUserRepository _userRepository;
         private readonly IMapper _mapper;
 
-        public PropertiesController(ApiDbContext context, IMapper mapper)
+        public PropertiesController(IPropertyRepository propertyRepository, IMapper mapper, IUserRepository userRepository)
         {
-            _context = context;
+            _propertyRepository = propertyRepository;
             _mapper = mapper;
+            _userRepository = userRepository;
         }
 
 
         [HttpGet("PropertyList")]
         [Authorize]
-        public IActionResult GetProperties(int categoryId)
+        public async Task<IActionResult> GetProperties(int categoryId)
         {
-            var proprtiesResult = _context.Properties.Where(p => p.CategoryId == categoryId);
+            var proprtiesResult = await _propertyRepository.GetPropertiesAsync(categoryId);
                 if(proprtiesResult == null)
             {
                 return NotFound("No properties found");
@@ -37,9 +41,9 @@ namespace RealEstateApi.Controllers
 
         [HttpGet("PropertyDetail")]
         [Authorize]
-        public IActionResult GetPropertyDetail(int id)
+        public async Task<IActionResult> GetPropertyDetail(int id)
         {
-            var propertyResult = _context.Properties.FirstOrDefault(p => p.Id == id);
+            var propertyResult = await _propertyRepository.GetPropertyByIdAsync(id);
             if (propertyResult == null)
             {
                 return NotFound($"Property with ID {id} not found");
@@ -50,30 +54,28 @@ namespace RealEstateApi.Controllers
 
         [HttpGet("TrendingProperties")]
         [Authorize]
-        public IActionResult GetTrendingProperties()
+        public async Task<IActionResult> GetTrendingProperties()
         {
-            var trendingProperties = _context.Properties.Where(p => p.IsTrending == true);
+            var trendingProperties =await _propertyRepository.GetTrendingProperties();
             if (trendingProperties == null)
             {
-                return NotFound();
+                return NotFound("No Trending Porperties Found");
             }
             return Ok(trendingProperties);
         }
 
         [HttpGet("SearchProperties")]
         [Authorize]
-        public IActionResult SearchProperties(string query)
+        public async Task<IActionResult> SearchProperties(string query)
         {
-            Console.WriteLine($"Received Query: {query}");
 
             if (string.IsNullOrWhiteSpace(query))
             {
                 return BadRequest("Query parameter is required.");
             }
 
-            var searchResult = _context.Properties.Where(p => p.Name.Contains(query) || p.Address.Contains(query)).ToList(); ;
-            
-            if (!searchResult.Any()) 
+            var searchResult = await _propertyRepository.SearchPropertiesAsync(query);
+            if (!searchResult.Any())
             {
                 return NotFound("No properties found");
             }
@@ -83,7 +85,7 @@ namespace RealEstateApi.Controllers
 
         [HttpPost]
         [Authorize]
-        public IActionResult Post([FromBody] PropertyDto propertyDto)
+        public async Task<IActionResult> Post([FromBody] PropertyDto propertyDto)
         {
             if (propertyDto == null)
             {
@@ -92,15 +94,17 @@ namespace RealEstateApi.Controllers
 
             // Get the authenticated user's email from JWT token
             var userEmail = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
-            var user = _context.Users.FirstOrDefault(u => u.Email == userEmail);
-
+            if (string.IsNullOrEmpty(userEmail))
+            {
+                return Unauthorized("Invalid User");
+            }
+            var user = await _userRepository.GetUserByEmailAsync(userEmail);
             if (user == null)
             {
-                return NotFound("User not found");
-            }
+                return Unauthorized("User Not found");
 
-      
-            var property = new Property
+            }
+                var property = new Property
             {
                 Name = propertyDto.Name,
                 Detail=propertyDto.Details,
@@ -112,17 +116,17 @@ namespace RealEstateApi.Controllers
                 UserId = user.Id // Assign user who created it
             };
 
-            _context.Properties.Add(property);
-            _context.SaveChanges();
+           await _propertyRepository.AddPropertyAsync(property);
+            await _propertyRepository.SaveChangesAsync();
 
             return StatusCode(StatusCodes.Status201Created, property);
         }
 
         [HttpPut("{id}")]
         [Authorize]
-        public IActionResult Put(int id,[FromBody] PropertyDto propertyDto)
+        public async Task<IActionResult> Put(int id,[FromBody] PropertyDto propertyDto)
         {
-            var propertyResult = _context.Properties.FirstOrDefault(p => p.Id == id);
+            var propertyResult = await _propertyRepository.GetPropertyByIdAsync(id);
             if (propertyResult == null)
             {
                 return NotFound($"Property with ID {id} not found");
@@ -130,16 +134,26 @@ namespace RealEstateApi.Controllers
 
             // Get the authenticated user's email from JWT token
             var userEmail = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
-            var user = _context.Users.FirstOrDefault(u => u.Email == userEmail);
-
+            if (string.IsNullOrEmpty(userEmail))
+            {
+                return Unauthorized("You are not authorized to update this property");
+            }
+            var user = await _userRepository.GetUserByEmailAsync(userEmail);
             if (user == null || propertyResult.UserId != user.Id)
             {
                 return Unauthorized("You are not authorized to update this property");
             }
 
+            if (propertyResult.UserId != user.Id)
+            {
+                return Forbid("You are not allowed to update this property.");
+            }
+            bool categoryExists = await _propertyRepository.CategoryExistsAsync(propertyDto.CategoryId);
+            if (!categoryExists) { 
+                return BadRequest("Category does not exist");
+            }
 
-           
-                propertyResult.Name = propertyDto.Name;
+            propertyResult.Name = propertyDto.Name;
                 propertyResult.Detail = propertyDto.Details;
                 propertyResult.Address = propertyDto.Address;
                 propertyResult.Price = (int)propertyDto.Price;
@@ -147,30 +161,40 @@ namespace RealEstateApi.Controllers
                 propertyResult.CategoryId = propertyDto.CategoryId;
             
 
-         
-            _context.SaveChanges();
+            await _propertyRepository.UpdatePropertyAsync(propertyResult);
+            await _propertyRepository.SaveChangesAsync();
                 
             return Ok("Record Successfully Updated");
         }
 
         [HttpDelete("{id}")]
         [Authorize]
-        public IActionResult Delete(int id)
+        public async Task<IActionResult> Delete(int id)
         {
-            var propertyResult = _context.Properties.FirstOrDefault(p => p.Id == id);
+            var propertyResult = await _propertyRepository.GetPropertyByIdAsync(id);
             if (propertyResult == null)
             {
                 return NotFound($"Property with ID {id} not found");
             }
             // Get the authenticated user's email from JWT token
             var userEmail = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Email)?.Value;
-            var user = _context.Users.FirstOrDefault(u => u.Email == userEmail);
-            if (user == null || propertyResult.UserId != user.Id)
+            if (string.IsNullOrEmpty(userEmail))
             {
                 return Unauthorized("You are not authorized to delete this property");
             }
-            _context.Properties.Remove(propertyResult);
-            _context.SaveChanges();
+
+            var user = await _userRepository.GetUserByEmailAsync(userEmail);
+            if (user == null || propertyResult.UserId != user.Id)
+            {
+                return Unauthorized("User not found");
+            }
+            if(propertyResult.UserId != user.Id)
+            {
+                return Forbid("You are not allowed to delete this property.");
+            }
+
+            await _propertyRepository.DeletePropertyAsync(id);
+            await _propertyRepository.SaveChangesAsync();
             return Ok("Record Successfully Deleted");
         }
 

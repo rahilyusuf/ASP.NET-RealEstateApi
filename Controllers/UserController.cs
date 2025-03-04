@@ -8,6 +8,7 @@ using RealEstateApi.Models;
 using RealEstateApi.DTOs;
 using Microsoft.AspNetCore.Identity;
 using RealEstateApi.Services;
+using RealEstateApi.Repositories;
 
 
 namespace RealEstateApi.Controllers
@@ -16,43 +17,21 @@ namespace RealEstateApi.Controllers
     [ApiController]
     public class UserController : ControllerBase
     {
-        private readonly ApiDbContext _context;
+        private readonly IUserRepository _userRepository;
         private readonly IPasswordHasher<User> _passwordHasher;
         private readonly IAuthService _authService;
 
-        public UserController(ApiDbContext context, IConfiguration config, IPasswordHasher<User> passwordHasher, IAuthService authService)
+        public UserController(IUserRepository userRepository, IConfiguration config, IPasswordHasher<User> passwordHasher, IAuthService authService)
         {
-            _context = context;
+            _userRepository = userRepository;
             _passwordHasher = passwordHasher;
             _authService = authService;
         }
 
-        [HttpGet("[action]")]
-        public IActionResult HasExistingPasswords()
-        {
-            var users = _context.Users.ToList();
-
-            foreach (var u in users)
-            {
-                if (!IsHashed(u.Password))
-                {
-                    u.Password = _passwordHasher.HashPassword(u, u.Password);
-                }
-            }
-            _context.SaveChanges();
-            return Ok("Password successfully updated");
-        }
-        private bool IsHashed(string password)
-        {
-            return password.Length == 88 && password[0] == 'A' && password[1] == 'Q';
-        }
-
-
         [HttpPost("[action]")]
-        public IActionResult Register([FromBody] UserRegisterRequest user)
+        public async Task<IActionResult> Register([FromBody] UserRegisterRequest user)
         {
-            var userExists = _context.Users.FirstOrDefault(u => u.Email == user.Email);
-            if (userExists != null)
+            if (await _userRepository.UserExistsAsync(user.Email))
             {
                 return BadRequest("User already exists");
             }
@@ -63,8 +42,6 @@ namespace RealEstateApi.Controllers
                 Password = _passwordHasher.HashPassword(new User(), user.Password),
                 Phone = user.Phone
             };
-            _context.Users.Add(newUser);
-            _context.SaveChanges();
 
             var userResponse = new UserResponse
             {
@@ -72,13 +49,16 @@ namespace RealEstateApi.Controllers
                 Email = newUser.Email,
                 Phone = newUser.Phone
             };
+            await _userRepository.AddUserAsync(newUser);
+            await _userRepository.SaveChangesAsync();
+
             return Created("User Created", userResponse);
         }
 
         [HttpPost("[action]")]
-        public IActionResult Login([FromBody] LoginRequest user)
+        public async Task<IActionResult> Login([FromBody] LoginRequest user)
         {
-            var CurrentUser = _context.Users.FirstOrDefault(u => u.Email == user.Email);
+            var CurrentUser = await _userRepository.GetUserByEmailAsync(user.Email);
             if (CurrentUser == null)
             {
                 return Unauthorized("Invalid email or password");

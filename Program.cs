@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using RealEstateApi.Data;
 using RealEstateApi.Mappings;
 using RealEstateApi.Models;
+using RealEstateApi.Repositories;
 using RealEstateApi.Services;
 using System.Text;
 
@@ -35,7 +36,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Key"]))
         };
     });
-
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IPropertyRepository, PropertyRepository>();
+builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
 builder.Services.AddAutoMapper(typeof(MappingProfile));
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
